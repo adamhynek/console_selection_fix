@@ -5,12 +5,14 @@
 #include "skse64_common/Relocation.h"
 #include "skse64_common/BranchTrampoline.h"
 
+#include "skse64/NiNodes.h"
+#include "skse64/GameData.h"
+
 #include <DirectXMath.h>
 
 #include <ShlObj.h>  // CSIDL_MYDOCUMENTS
 
 #include "version.h"
-#include "config.h"
 
 
 // SKSE globals
@@ -241,13 +243,6 @@ extern "C" {
     bool SKSEPlugin_Load(const SKSEInterface * skse)
     {	// Called by SKSE to load this plugin
         _MESSAGE("Console Selection Fix loaded");
-
-        if (Config::ReadConfigOptions()) {
-            _MESSAGE("Successfully read config parameters");
-        }
-        else {
-            _WARNING("[WARNING] Failed to read config options. Using defaults instead.");
-        }
 
         _MESSAGE("Registering for SKSE messages");
         g_messaging = (SKSEMessagingInterface*)skse->QueryInterface(kInterface_Messaging);
