@@ -22,6 +22,7 @@ SKSETrampolineInterface *g_trampoline = nullptr;
 
 
 RelocPtr<float> fWindowCutoutSize_VR(0x1EABDF8);
+RelocPtr<int> uraVrEyePresentMode_VR(0x1EABDE0);
 
 
 namespace RE {
@@ -69,25 +70,21 @@ RelocPtr<RE::RendererShadowState> g_rendererShadowState(0x3180DB0);
 
 
 NiPoint3 ScreenToWorldDirection(float x_ndc, float y_ndc, const DirectX::XMMATRIX &viewProjectionMatrix) {
-    // Step 1: Convert screen coordinates to Normalized Device Coordinates (NDC)
-    float z_ndc = 1.0f; // Forward direction
-
-    // Step 2: Define near and far clip space coordinates
+    // Define near and far clip space coordinates
     DirectX::XMVECTOR nearPoint = DirectX::XMVectorSet(x_ndc, y_ndc, 0.0f, 1.0f); // z = 0 for near plane
     DirectX::XMVECTOR farPoint = DirectX::XMVectorSet(x_ndc, y_ndc, 1.0f, 1.0f); // z = 1 for far plane
 
-    // Step 3: Invert the View-Projection matrix
     DirectX::XMMATRIX invVP = DirectX::XMMatrixInverse(nullptr, viewProjectionMatrix);
 
-    // Step 4: Unproject to world space
+    // Unproject to world space
     DirectX::XMVECTOR nearWorld = XMVector4Transform(nearPoint, invVP);
     DirectX::XMVECTOR farWorld = XMVector4Transform(farPoint, invVP);
 
-    // Step 5: Perspective divide to convert from homogeneous coordinates
+    // Perspective divide to convert from homogeneous coordinates
     nearWorld = DirectX::XMVectorScale(nearWorld, 1.0f / DirectX::XMVectorGetW(nearWorld));
     farWorld = DirectX::XMVectorScale(farWorld, 1.0f / DirectX::XMVectorGetW(farWorld));
 
-    // Step 6: Get the direction vector and normalize it
+    // Get the direction vector from unprojected near/far points
     DirectX::XMVECTOR direction = DirectX::XMVector3Normalize(DirectX::XMVectorSubtract(farWorld, nearWorld));
 
     return { direction.m128_f32[0], direction.m128_f32[1], direction.m128_f32[2] };
@@ -111,18 +108,26 @@ bool NiCamera_GetStartAndDirFromScreenRectCoords_Hook(RE::NiCamera *camera, int 
 
     RE::RendererShadowState *rendererShadowState = g_rendererShadowState;
 
+    // Fit to the viewport 0 to 1
     float rightAmount = (xPercent - camera->port.m_left) / (camera->port.m_right - camera->port.m_left);
     float upAmount = (yPercent - camera->port.m_bottom) / (camera->port.m_top - camera->port.m_bottom);
+    // Center the values around 0
     rightAmount = 2.f * rightAmount - 1.f;
     upAmount = 2.f * upAmount - 1.f;
+    // Scale by how zoomed in the cutout is from the full eye
     rightAmount *= (1.f - 4.f * *fWindowCutoutSize_VR);
     upAmount *= (1.f - 2.f * *fWindowCutoutSize_VR);
 
     _MESSAGE("%.3f %.3f", rightAmount, upAmount);
 
-    a_dirOut = ScreenToWorldDirection(rightAmount, upAmount, *(DirectX::XMMATRIX *)&rendererShadowState->m_CameraData[0].m_ViewProjMatrixUnjittered);
+    int eye = 0; // left
+    if (*uraVrEyePresentMode_VR == 1) { // uraVrEyePresentMode == 2 is both eyes side by side and I don't care to handle that
+        eye = 1; // right
+    }
 
-    a_camPosOut = camera->eyePositions.entries[0];
+    a_dirOut = ScreenToWorldDirection(rightAmount, upAmount, *(DirectX::XMMATRIX *)&rendererShadowState->m_CameraData[eye].m_ViewProjMatrixUnjittered);
+
+    a_camPosOut = camera->eyePositions.entries[eye];
 
     return true;
 }
